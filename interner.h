@@ -1,6 +1,13 @@
+#ifndef INTERNER_H
+#define INTERNER_H
+
+#include <stddef.h>
+#include <stdint.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <sys/types.h>
 
 /*
 *
@@ -8,78 +15,107 @@
 *
 */
 
-
-#define MAX_SIZE 10
-
 typedef struct couple {
-  char* name;
+  uint16_t len;
   int id;
 } couple;
 
 typedef struct intern{
-  couple pool[MAX_SIZE];
-  char* arr[MAX_SIZE];
+  char** arr;
+  int count;
+  int cap;
+  couple* pool;
 } intern;
 
 
-static void init_interner(intern* it){
-  for(int i = 0; i < MAX_SIZE; i++){
-    it->arr[i] = NULL;
-    it->pool[i].name = NULL;
-    it->pool[i].id = -1;
-  }
+// static void init_interner(intern* it){
+//     it->count = 0;
+//   for(int i = 0; i < MAX_SIZE; i++){
+//     it->arr[i] = NULL;
+//     it->pool[i].name = NULL;
+//     it->pool[i].id = -1;
+//     it->pool[i].len = 0;
+//   }
+// }
 
+static void init_interner(intern* it){
+  it->count = 0;
+  it->cap = 1;
+  it->pool = (couple*)calloc((size_t)it->cap, sizeof(*it->pool));
+  it->arr = (char**)calloc((size_t)it->cap, sizeof(*it->arr));
+  if(!it->pool || !it->arr){
+    perror("calloc error");
+    exit(1);
+  }
 }
 
-static int interner(intern* it, const char* str){
-    if(!it || !str) return -1;
-  
-    for (int i = 0; i < MAX_SIZE; i++) {
-      if(it->pool[i].name != NULL && strcmp(it->pool[i].name, str) == 0) return it->pool[i].id;
+static int resize(intern* it){
+  if(it->count < it->cap) return 0;
+
+  int oldcap = it->cap;
+  it->cap *= 2;
+
+  couple* newpool = (couple*)realloc(it->pool, (size_t)it->cap * sizeof(*it->pool));
+  char** newarr = (char**)realloc(it->arr, (size_t)it->cap * sizeof(char*));
+  if(!newpool || !newarr){
+    perror("realloc failed");
+    exit(1);
+  }
+
+  it->pool = newpool;
+  it->arr = newarr;
+
+  return 0;
+}
+
+static int interner(intern* it, const char* s){
+    if(!it || !s) return -1;
+
+    size_t lens = strlen(s);
+    if(lens > UINT16_MAX) return -1;
+    uint16_t len = (uint16_t)lens;
+    
+    for (int i = 0; i < it->count; i++) {
+      if(it->pool[i].len != len || it->arr[i][0] != s[0]) continue;
+      if(memcmp(it->arr[i], s, len) == 0) return it->pool[i].id;
     }
 
-    int id = -1;
-    for(int i = 0; i < MAX_SIZE; i++){
-      if(it->arr[i] == NULL) {
-        id = i;
-        break;
-        }
-    }
-    if(id == -1) return -1;
+    if(resize(it) != 0) return -1;
+    int id = it->count;
 
-    int p = -1;
-    for(int i = 0; i < MAX_SIZE; i++){
-      if(it->pool[i].name == NULL){
-        p = i;
-        break;
-      }
-    }
-    if(p == -1) return -1;
-
-    char* iownyou = strdup(str);
+    char* iownyou = (char*)malloc((size_t)len+1);
     if(!iownyou) return -1;
 
+    memcpy(iownyou, s, len);
+    iownyou[len] = '\0';
+    
     it->arr[id] = iownyou;
-    it->pool[p].name = iownyou;
-    it->pool[p].id = id;
+    it->pool[id].id = id;
+    it->pool[id].len = len;
 
+    it->count++;
+    
     return id;
 }
 
-static const char* view(intern* intern, const int id){
-  if(id == -1) return NULL;
-  if(!intern || id >= MAX_SIZE || id < 0) return NULL;
-    return intern->arr[id];
+static const char* view(intern* it, const int id){
+  if(!it|| id >= it->count || id < 0) return NULL;
+    return it->arr[id];
 }
 
 
 static void free_interner(intern* it){
   if(!it) return;
-  for(int i = 0; i < MAX_SIZE; i++){
+  for(int i = 0; i < it->count; i++){
     free(it->arr[i]);
-    it->arr[i] = NULL;
-    it->pool[i].name = NULL;
-    it->pool[i].id = -1;
   }
+  free(it->arr);
+  free(it->pool);
+  it->arr = NULL;
+  it->pool = NULL;
+  it->count = 0;
+  it->cap = 0;
 }
 
+
+#endif
